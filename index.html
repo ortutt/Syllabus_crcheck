@@ -11,19 +11,37 @@
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
   :root{
-    --bg:#f7f4ee; --ink:#1a1a1a; --muted:#6a6a6a; --line:#e0d9cc;
-    --accent:#2a6dd9; --green:#2a9a70; --amber:#c98a2b; --red:#c25450;
-    --card:#fbfaf6; --soft:#efe9da;
+    /* Citation Compare palette */
+    --bg:#f4f6f9;
+    --ink:#1a2035;
+    --secondary:#4a5a7a;
+    --muted:#8a96b0;
+    --line:#dde2ec;
+    --soft:#f0f3f8;
+    --card:#ffffff;
+    --accent:#2a6dd9;
+    --accent-light:#4c8ef5;
+    --green:#2a7a50;
+    --green-bg:#e8f7ef;
+    --green-border:#b8e0cc;
+    --amber:#8a6010;
+    --amber-bg:#fef8e8;
+    --amber-border:#f0e0a8;
+    --red:#c03050;
+    --red-bg:#fff5f7;
+    --red-border:#f4c4cc;
   }
   *{box-sizing:border-box}
   body{
-    margin:0; padding:48px 32px 96px; background:var(--bg); color:var(--ink);
-    font-family:'DM Sans', -apple-system, sans-serif; font-size:14px; line-height:1.55;
+    margin:0; padding:48px 32px 96px;
+    background:var(--bg); color:var(--ink);
+    font-family:'DM Sans', -apple-system, sans-serif;
+    font-size:14px; line-height:1.55;
   }
   .wrap{max-width:1280px; margin:0 auto}
   h1{
     font-family:'Cormorant Garamond', serif; font-weight:500; font-size:42px;
-    margin:0 0 4px; letter-spacing:-0.01em;
+    margin:0 0 4px; letter-spacing:-0.01em; color:var(--ink);
   }
   .sub{
     color:var(--muted); font-size:14px; margin-bottom:40px;
@@ -35,72 +53,76 @@
     transition:opacity 0.3s;
   }
   .step.disabled{opacity:0.45; pointer-events:none}
-  .step-h{
-    display:flex; align-items:baseline; gap:14px;
-    margin:0 0 14px;
-  }
+  .step-h{display:flex; align-items:baseline; gap:14px; margin:0 0 14px}
   .step-num{
     font-family:'IBM Plex Mono', monospace; font-size:11px;
     color:var(--muted); letter-spacing:0.1em; text-transform:uppercase;
   }
   .step-title{
     font-family:'Cormorant Garamond', serif; font-weight:500;
-    font-size:24px; margin:0;
+    font-size:24px; margin:0; color:var(--ink);
   }
+  .step-desc{margin:0 0 14px; color:var(--secondary); font-size:13px}
+
+  /* FIX: label needs display:block so it fills the step container */
   .drop{
+    display:block; width:100%;
     border:2px dashed var(--line); border-radius:6px;
     padding:48px 24px; text-align:center; cursor:pointer;
-    transition:all 0.2s; background:var(--bg);
+    transition:all 0.2s; background:var(--soft);
   }
   .drop:hover, .drop.over{
-    border-color:var(--accent); background:#eef3fb;
+    border-color:var(--accent); background:#e8eff9;
   }
-  .drop strong{display:block; font-size:16px; margin-bottom:6px; color:var(--ink)}
+  .drop strong{display:block; font-size:16px; margin-bottom:6px; color:var(--ink); font-weight:500}
   .drop span{color:var(--muted); font-size:13px}
   .drop input{display:none}
+
   .file-info{
     margin-top:12px; padding:10px 14px;
     background:var(--soft); border-radius:5px;
     font-family:'IBM Plex Mono', monospace; font-size:12px;
-    color:var(--ink); display:none;
+    color:var(--secondary); display:none;
   }
   .file-info.show{display:block}
+
   textarea{
     width:100%; min-height:280px; padding:14px 16px;
     font-family:'IBM Plex Mono', monospace; font-size:12px;
     line-height:1.6; color:var(--ink);
     border:1px solid var(--line); border-radius:5px;
-    background:var(--bg); resize:vertical;
+    background:var(--card); resize:vertical;
   }
-  textarea:focus{outline:none; border-color:var(--accent)}
+  textarea:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(42,109,217,0.1)}
+
   .review-meta{
     display:flex; justify-content:space-between; align-items:center;
     margin-top:12px; font-size:13px; color:var(--muted);
   }
   .review-meta strong{color:var(--ink); font-family:'IBM Plex Mono', monospace}
+
   button{
     font-family:'DM Sans', sans-serif; font-size:13px; font-weight:500;
     padding:10px 20px; border-radius:5px; cursor:pointer;
-    border:1px solid var(--ink); background:var(--ink); color:var(--bg);
-    letter-spacing:0.02em; transition:transform 0.15s;
+    border:1px solid var(--accent); background:var(--accent); color:#fff;
+    letter-spacing:0.02em; transition:all 0.15s;
   }
-  button.secondary{background:transparent; color:var(--ink)}
-  button:hover:not(:disabled){transform:translateY(-1px)}
+  button.secondary{background:transparent; color:var(--accent)}
+  button:hover:not(:disabled){background:#1f5cc4; border-color:#1f5cc4; color:#fff}
+  button.secondary:hover:not(:disabled){background:var(--soft); color:var(--accent)}
   button:disabled{opacity:0.4; cursor:not-allowed}
-  .toolbar{
-    display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:16px;
-  }
+
+  .toolbar{display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:16px}
   .progress{
     flex:1; min-width:200px; height:6px;
     background:var(--line); border-radius:3px; overflow:hidden;
   }
-  .progress-bar{
-    height:100%; background:var(--accent); width:0%; transition:width 0.3s;
-  }
+  .progress-bar{height:100%; background:var(--accent); width:0%; transition:width 0.3s}
   .status{
     font-family:'IBM Plex Mono', monospace; font-size:12px;
     color:var(--muted); min-width:140px;
   }
+
   table{
     width:100%; border-collapse:collapse;
     background:var(--card); border:1px solid var(--line);
@@ -115,8 +137,8 @@
   }
   td{padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top}
   tr:last-child td{border-bottom:none}
-  .cite-cell{font-size:13px; line-height:1.5; max-width:560px}
-  .num{font-family:'IBM Plex Mono', monospace; font-size:13px; text-align:right}
+  .cite-cell{font-size:13px; line-height:1.5; max-width:560px; color:var(--ink)}
+  .num{font-family:'IBM Plex Mono', monospace; font-size:13px; text-align:right; color:var(--ink)}
   .pct{font-family:'IBM Plex Mono', monospace; font-size:13px; font-weight:500}
   .pct.high{color:var(--green)}
   .pct.mid{color:var(--accent)}
@@ -127,35 +149,45 @@
     margin-left:6px; overflow:hidden;
   }
   .pct-bar-fill{height:100%; background:var(--accent)}
+
   .doi{font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--muted); word-break:break-all}
   .doi a{color:var(--accent); text-decoration:none}
   .doi a:hover{text-decoration:underline}
+
   .badge{
-    display:inline-block; padding:1px 6px; border-radius:3px;
+    display:inline-block; padding:2px 7px; border-radius:3px;
     font-family:'IBM Plex Mono', monospace; font-size:10px;
     font-weight:500; letter-spacing:0.04em; margin-left:4px;
   }
-  .badge.top1{background:#e8f7ef; color:#1d6b48; border:1px solid #b8e0cc}
+  .badge.top1{background:var(--green-bg); color:var(--green); border:1px solid var(--green-border)}
   .badge.top10{background:#e8f0f8; color:#1a4a6e; border:1px solid #b3cfe8}
-  .badge.top25{background:#f4f6f9; color:#4a5a7a; border:1px solid #dde2ec}
-  .badge.err{background:#fbe9e6; color:#a13b36; border:1px solid #f0c8c4}
+  .badge.top25{background:var(--soft); color:var(--secondary); border:1px solid var(--line)}
+  .badge.recent{background:var(--amber-bg); color:var(--amber); border:1px solid var(--amber-border)}
+  .badge.err{background:var(--red-bg); color:var(--red); border:1px solid var(--red-border)}
+
   .row-status{font-family:'IBM Plex Mono', monospace; font-size:10px; color:var(--muted)}
   .matched-title{font-size:11px; color:var(--muted); margin-top:4px; font-style:italic}
   .matched-title.mismatch{color:var(--amber)}
+
   .note{
     margin-top:16px; padding:14px 18px;
-    background:var(--bg); border-left:3px solid var(--accent); border-radius:0 5px 5px 0;
-    font-size:13px; line-height:1.6; color:var(--muted);
+    background:var(--soft); border-left:3px solid var(--accent); border-radius:0 5px 5px 0;
+    font-size:13px; line-height:1.6; color:var(--secondary);
   }
   .note strong{color:var(--ink)}
+  .note a{color:var(--accent); text-decoration:none}
+  .note a:hover{text-decoration:underline}
+
   .footer{
     margin-top:32px; padding-top:20px; border-top:1px solid var(--line);
     font-family:'IBM Plex Mono', monospace; font-size:11px;
-    color:var(--muted); letter-spacing:0.04em;
+    color:var(--muted); letter-spacing:0.04em; text-align:center;
   }
+  .footer a{color:var(--accent); text-decoration:none}
+
   .error-msg{
     margin-top:10px; padding:10px 14px;
-    background:#fbe9e6; border:1px solid #f0c8c4; color:#a13b36;
+    background:var(--red-bg); border:1px solid var(--red-border); color:var(--red);
     border-radius:5px; font-size:13px; display:none;
   }
   .error-msg.show{display:block}
@@ -188,11 +220,11 @@
     <span class="step-num">Step 2</span>
     <h2 class="step-title">Review extracted citations</h2>
   </div>
-  <p style="margin:0 0 12px; color:var(--muted)">
+  <p class="step-desc">
     One citation per line. Edit freely — remove headers, add missed papers, or fix garbled text.
     CrossRef bibliographic search is forgiving, but cleaner input gives better matches.
   </p>
-  <textarea id="citationsArea" placeholder="Citations will appear here after upload..."></textarea>
+  <textarea id="citationsArea" placeholder="Citations will appear here after upload…"></textarea>
   <div class="review-meta">
     <span><strong id="citCount">0</strong> citations detected</span>
     <span id="reExtract" style="cursor:pointer; color:var(--accent); display:none">↻ Re-extract from file</span>
@@ -205,10 +237,11 @@
     <span class="step-num">Step 3</span>
     <h2 class="step-title">Fetch CrossRef percentiles</h2>
   </div>
-  <p style="margin:0 0 12px; color:var(--muted)">
+  <p class="step-desc">
     Each paper is matched against CrossRef, then its citation count is ranked against all
     other articles in the same journal × year. Same algorithm as
     <a href="https://ortutt.github.io/citation-compare/" style="color:var(--accent)">Citation Compare</a>.
+    Papers from <span id="recentYearsLabel"></span> are not scored (too few citations accumulated to be meaningful).
   </p>
   <div class="toolbar">
     <button id="runBtn" onclick="run()">Fetch percentiles</button>
@@ -222,7 +255,7 @@
         <th>Citation (your input)</th>
         <th style="width:80px" class="num">Year</th>
         <th style="width:70px" class="num">Cites</th>
-        <th style="width:160px">Percentile</th>
+        <th style="width:170px">Percentile</th>
         <th style="width:70px" class="num">N</th>
         <th style="width:200px">DOI</th>
       </tr>
@@ -232,19 +265,26 @@
   <div class="note" id="resultsNote" style="display:none">
     <strong>How to read this.</strong> Percentile = where the paper ranks among all articles
     in the same journal × publication year, by CrossRef citation count. A 78th percentile
-    means more cited than 78% of articles in that journal that year. Hover/check the matched
-    title shown under each entry to verify CrossRef found the right paper — mismatches are
-    rare but possible with very short queries.
+    means more cited than 78&nbsp;% of articles in that journal that year. The matched title
+    is shown beneath each citation — entries flagged with ⚠ may be wrong matches and worth
+    double-checking on <a href="https://ortutt.github.io/citation-compare/">Citation Compare</a> directly.
   </div>
 </div>
 
 <div class="footer">
-  CrossRef API · client-side only · no data leaves your browser except API calls to api.crossref.org
+  CrossRef API · client-side only · no data leaves your browser except API calls to api.crossref.org<br>
+  Companion tool to <a href="https://ortutt.github.io/citation-compare/">Citation Compare</a> · by <a href="https://www.ortuttnauer.com">Or Tuttnauer</a>
 </div>
 
 </div>
 
 <script>
+// ─── CONFIG ───────────────────────────────────────────────────────────────
+const CURRENT_YEAR = new Date().getFullYear();
+const TOO_RECENT_THRESHOLD = CURRENT_YEAR - 1;  // skip current year + previous year
+document.getElementById('recentYearsLabel').textContent =
+  `${TOO_RECENT_THRESHOLD} or ${CURRENT_YEAR}`;
+
 // ─── pdf.js setup ─────────────────────────────────────────────────────────
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -274,11 +314,8 @@ fileInput.addEventListener('change', ev => {
   if (f) handleFile(f);
 });
 
-function showError(msg) {
-  errorMsg.textContent = msg;
-  errorMsg.classList.add('show');
-}
-function clearError() { errorMsg.classList.remove('show'); }
+function showError(msg) { errorMsg.textContent = msg; errorMsg.classList.add('show'); }
+function clearError()   { errorMsg.classList.remove('show'); }
 
 async function handleFile(file) {
   clearError();
@@ -315,7 +352,6 @@ async function extractPDF(file) {
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
-    // Group items by approximate Y position to reconstruct lines
     const lines = {};
     content.items.forEach(it => {
       const y = Math.round(it.transform[5]);
@@ -336,26 +372,17 @@ async function extractDOCX(file) {
 }
 
 // ─── CITATION DETECTION ───────────────────────────────────────────────────
-// Heuristic: split into segments (paragraphs/lines), keep those that look
-// like citations — i.e., contain a year + are not headers.
 function extractCitations() {
-  // Normalize: collapse runs of whitespace within lines but keep line breaks
   const normalized = rawText
     .replace(/\r\n/g, '\n')
     .split('\n')
     .map(l => l.replace(/[ \t]+/g, ' ').trim())
     .join('\n');
 
-  // Split into candidate units: each non-empty line, plus merging short
-  // continuation lines into the previous one (common in PDFs where a single
-  // citation wraps across two visual lines).
   const lines = normalized.split('\n').map(l => l.trim()).filter(Boolean);
   const merged = [];
   for (const line of lines) {
     const last = merged[merged.length - 1];
-    // If the previous line doesn't end with a typical citation terminator,
-    // and the current line is short or doesn't start with a citation-like
-    // pattern (capital letter + comma or year), append it.
     if (last && shouldMerge(last, line)) {
       merged[merged.length - 1] = last + ' ' + line;
     } else {
@@ -363,18 +390,15 @@ function extractCitations() {
     }
   }
 
-  // Filter: keep lines that look like academic citations.
   const HEADER_RE = /^(week\s*\d+|topic|reading|recommended|optional|required|chapter|seminar|lecture|spring|fall|winter|autumn|module|session|date|class)\b/i;
   const candidates = merged.filter(line => {
     if (line.length < 35 || line.length > 1000) return false;
     if (!/\b(18|19|20)\d{2}\b/.test(line)) return false;
     if (HEADER_RE.test(line)) return false;
-    // Must have at least 4 words
     if (line.split(/\s+/).length < 5) return false;
     return true;
   });
 
-  // Deduplicate (case-insensitive, whitespace-normalized)
   const seen = new Set();
   const unique = [];
   for (const c of candidates) {
@@ -387,12 +411,10 @@ function extractCitations() {
 }
 
 function shouldMerge(prev, curr) {
-  // Merge if previous line clearly doesn't end a citation
   const endsCleanly = /[.!?][\s"')\]]*$/.test(prev) || /\d{1,4}\.?$/.test(prev);
   if (endsCleanly) return false;
-  // Don't merge if current line starts a new citation (capital + year nearby, or starts with author surname pattern)
-  if (/^[A-Z][a-z]+,\s+[A-Z]/.test(curr)) return false; // "Smith, J."
-  if (/^[A-Z][a-zA-Z'-]+\s+(and|&)\s+[A-Z]/.test(curr)) return false; // "Smith and Jones"
+  if (/^[A-Z][a-z]+,\s+[A-Z]/.test(curr)) return false;
+  if (/^[A-Z][a-zA-Z'-]+\s+(and|&)\s+[A-Z]/.test(curr)) return false;
   return true;
 }
 
@@ -460,6 +482,13 @@ async function processOne(r) {
     r.year = xrefYear || guessYear(r.query);
     const issn = (item.ISSN || [])[0];
 
+    // Skip percentile fetch for too-recent papers
+    if (r.year && r.year >= TOO_RECENT_THRESHOLD) {
+      r.tooRecent = true;
+      r.status = 'done';
+      return;
+    }
+
     await new Promise(res => setTimeout(res, 200));
 
     if (issn && xrefYear) {
@@ -489,11 +518,12 @@ async function run() {
     showError('No citations to process. Add some text in step 2.');
     return;
   }
+  clearError();
   results = citations.map((q, i) => ({
     idx:i, query:q, year:guessYear(q), doi:null,
     matchedTitle:null, matchedJournal:null,
     citations:null, percentile:null, n:null, median:null,
-    status:'pending', error:null
+    tooRecent:false, status:'pending', error:null
   }));
 
   document.getElementById('runBtn').disabled = true;
@@ -521,10 +551,11 @@ function render() {
     const tr = document.createElement('tr');
 
     let pctCell;
-    if (r.status === 'pending') pctCell = `<span class="row-status">queued</span>`;
-    else if (r.status === 'fetching') pctCell = `<span class="row-status">fetching…</span>`;
-    else if (r.status === 'error') pctCell = `<span class="badge err">${r.error}</span>`;
-    else if (r.percentile == null) pctCell = `<span class="row-status">no corpus</span>`;
+    if (r.status === 'pending')        pctCell = `<span class="row-status">queued</span>`;
+    else if (r.status === 'fetching')  pctCell = `<span class="row-status">fetching…</span>`;
+    else if (r.status === 'error')     pctCell = `<span class="badge err">${r.error}</span>`;
+    else if (r.tooRecent)              pctCell = `<span class="badge recent">Too recent</span>`;
+    else if (r.percentile == null)     pctCell = `<span class="row-status">no corpus</span>`;
     else {
       const cls = r.percentile >= 75 ? 'high' : r.percentile >= 50 ? 'mid' : 'low';
       const badge = r.percentile >= 99 ? '<span class="badge top1">top 1%</span>' :
@@ -561,7 +592,6 @@ function escapeHTML(s) {
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-// Loose check: does the query share enough distinctive words with the matched title?
 function looselyMatches(query, title) {
   const stopwords = new Set(['the','a','an','and','of','in','on','for','to','from','by','with','as','at','is','are','it','this','that']);
   const tokens = s => s.toLowerCase().match(/[a-z]{4,}/g)?.filter(w => !stopwords.has(w)) || [];
@@ -581,7 +611,10 @@ function downloadXLSX() {
     "Matched journal":       r.matchedJournal ?? "",
     "DOI":                   r.doi ?? "",
     "Citations (CrossRef)":  r.citations ?? "",
-    "Percentile (journal × year)": r.percentile ?? (r.status === 'error' ? "no match" : ""),
+    "Percentile (journal × year)":
+        r.tooRecent ? "Too recent"
+      : r.percentile != null ? r.percentile
+      : (r.status === 'error' ? "no match" : ""),
     "N (corpus size)":       r.n ?? "",
     "Median cites (corpus)": r.median ?? "",
     "Status":                r.status,
@@ -589,7 +622,7 @@ function downloadXLSX() {
   const ws = XLSX.utils.json_to_sheet(rows);
   ws['!cols'] = [
     {wch:80},{wch:6},{wch:50},{wch:30},{wch:30},
-    {wch:14},{wch:18},{wch:8},{wch:14},{wch:9}
+    {wch:14},{wch:22},{wch:8},{wch:14},{wch:9}
   ];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Citation percentiles");
