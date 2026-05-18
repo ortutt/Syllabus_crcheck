@@ -166,6 +166,15 @@
   .badge.na{background:var(--soft); color:var(--muted); border:1px solid var(--line); font-weight:400}
   .badge.err{background:var(--red-bg); color:var(--red); border:1px solid var(--red-border)}
 
+  .bib-banner{
+    margin-bottom:12px; padding:10px 14px;
+    background:#e8f0f8; border:1px solid #b3cfe8;
+    border-radius:5px; color:var(--secondary);
+    font-size:13px; line-height:1.5;
+  }
+  .bib-banner strong{color:var(--ink); font-weight:500}
+  .bib-banner-note{display:block; font-size:12px; color:var(--muted); margin-top:2px}
+
   .type-tag{
     font-family:'IBM Plex Mono', monospace; font-size:10px;
     color:var(--secondary); letter-spacing:0.02em;
@@ -214,9 +223,9 @@
     <h2 class="step-title">Upload your file</h2>
   </div>
   <label class="drop" id="drop">
-    <strong>Drop a PDF or Word file here</strong>
-    <span>or click to browse · .pdf, .docx, .txt</span>
-    <input type="file" id="fileInput" accept=".pdf,.docx,.txt">
+    <strong>Drop a PDF, Word, or BibTeX file here</strong>
+    <span>or click to browse · .pdf, .docx, .txt, .bib</span>
+    <input type="file" id="fileInput" accept=".pdf,.docx,.txt,.bib">
   </label>
   <div class="file-info" id="fileInfo"></div>
   <div class="error-msg" id="errorMsg"></div>
@@ -232,6 +241,10 @@
     One citation per line. Edit freely — remove headers, add missed papers, or fix garbled text.
     CrossRef bibliographic search is forgiving, but cleaner input gives better matches.
   </p>
+  <div class="bib-banner" id="bibBanner" style="display:none">
+    <strong>BibTeX detected</strong> · <span id="bibSummary"></span>
+    <span class="bib-banner-note">Edited lines fall back to free-text classification automatically.</span>
+  </div>
   <textarea id="citationsArea" placeholder="Citations will appear here after upload…"></textarea>
   <div class="review-meta">
     <span><strong id="citCount">0</strong> citations detected</span>
@@ -250,7 +263,8 @@
     other articles in the same journal × year. Same algorithm as
     <a href="https://ortutt.github.io/citation-compare/" style="color:var(--accent)">Citation Compare</a>.
     Papers from <span id="recentYearsLabel"></span> are not scored (too few citations accumulated to be meaningful).
-    Books and book chapters are identified from the citation format and marked NA — the journal × year framework doesn't apply to them.
+    Books, book chapters, conference papers, and theses are identified from the citation format
+    (or directly from the BibTeX entry type) and marked NA — the journal × year framework doesn't apply.
   </p>
   <div class="toolbar">
     <button id="runBtn" onclick="run()">Fetch percentiles</button>
@@ -367,8 +381,20 @@ async function handleFile(file) {
   fileInfo.textContent = `Loading ${file.name} (${(file.size/1024).toFixed(1)} KB)…`;
   fileInfo.classList.add('show');
   try {
-    let text = '';
     const name = file.name.toLowerCase();
+
+    if (name.endsWith('.bib')) {
+      const text = await file.text();
+      rawText = text;
+      loadBibTeX(text);
+      fileInfo.textContent = `Loaded ${file.name} · ${bibLineMap.size} BibTeX entries`;
+      document.getElementById('step2').classList.remove('disabled');
+      document.getElementById('step3').classList.remove('disabled');
+      document.getElementById('reExtract').style.display = 'none';
+      return;
+    }
+
+    let text = '';
     if (name.endsWith('.pdf')) {
       text = await extractPDF(file);
     } else if (name.endsWith('.docx')) {
@@ -376,9 +402,12 @@ async function handleFile(file) {
     } else if (name.endsWith('.txt') || file.type.startsWith('text/')) {
       text = await file.text();
     } else {
-      throw new Error('Unsupported file type. Use .pdf, .docx, or .txt');
+      throw new Error('Unsupported file type. Use .pdf, .docx, .txt, or .bib');
     }
     rawText = text;
+    // Reset BibTeX state when loading a non-bib file
+    bibLineMap = new Map();
+    document.getElementById('bibBanner').style.display = 'none';
     fileInfo.textContent = `Loaded ${file.name} · ${text.length.toLocaleString()} characters`;
     extractCitations();
     document.getElementById('step2').classList.remove('disabled');
@@ -390,7 +419,272 @@ async function handleFile(file) {
   }
 }
 
-async function extractPDF(file) {
+// ─── BIBTEX SUPPORT ───────────────────────────────────────────────────────
+// Parsed entries from the last .bib upload, keyed by the human-readable line
+// we placed in the textarea. If the user edits a line, its entry simply
+// disappears from this map and the run path falls back to text classification.
+let bibLineMap = new Map();
+
+// Maps BibTeX entry types to our processing categories.
+// Article-like: scored via CrossRef. Anything else: skipped with NA.
+const BIB_TYPE_MAP = {
+  // Articles
+  article:        {category:'journal-article'},
+  // Books (not scored)
+  book:           {category:'book',         label:'book'},
+  booklet:        {category:'book',         label:'booklet'},
+  mvbook:         {category:'book',         label:'multi-volume book'},
+  collection:     {category:'book',         label:'edited collection'},
+  proceedings:    {category:'book',         label:'proceedings volume'},
+  manual:         {category:'book',         label:'manual'},
+  reference:      {category:'book',         label:'reference work'},
+  // Chapters and conference papers (not scored — per user preference)
+  inbook:         {category:'book-chapter', label:'book chapter'},
+  incollection:   {category:'book-chapter', label:'book chapter'},
+  suppbook:       {category:'book-chapter', label:'book chapter'},
+  bookinbook:     {category:'book-chapter', label:'book chapter'},
+  inproceedings:  {category:'book-chapter', label:'conference paper'},
+  conference:     {category:'book-chapter', label:'conference paper'},
+  // Other gray literature — also skipped with NA
+  phdthesis:      {category:'other',        label:'PhD thesis'},
+  mastersthesis:  {category:'other',        label:"Master's thesis"},
+  thesis:         {category:'other',        label:'thesis'},
+  techreport:     {category:'other',        label:'tech report'},
+  report:         {category:'other',        label:'report'},
+  // Ambiguous — try as article (preprints, working papers often have DOIs)
+  misc:           {category:'journal-article'},
+  online:         {category:'journal-article'},
+  electronic:     {category:'journal-article'},
+  unpublished:    {category:'journal-article'},
+};
+
+function bibCategoryOf(entry) {
+  return BIB_TYPE_MAP[entry.type]?.category || 'journal-article';
+}
+function bibLabelOf(entry) {
+  return BIB_TYPE_MAP[entry.type]?.label || entry.type;
+}
+
+// Decode common LaTeX escapes to readable Unicode.
+function delatex(s) {
+  if (!s) return '';
+  const TBL = {
+    '"': {a:'ä',e:'ë',i:'ï',o:'ö',u:'ü',y:'ÿ',A:'Ä',E:'Ë',I:'Ï',O:'Ö',U:'Ü',Y:'Ÿ'},
+    "'": {a:'á',e:'é',i:'í',o:'ó',u:'ú',y:'ý',c:'ć',n:'ń',s:'ś',z:'ź',A:'Á',E:'É',I:'Í',O:'Ó',U:'Ú',Y:'Ý',C:'Ć',N:'Ń',S:'Ś',Z:'Ź'},
+    '`': {a:'à',e:'è',i:'ì',o:'ò',u:'ù',A:'À',E:'È',I:'Ì',O:'Ò',U:'Ù'},
+    '^': {a:'â',e:'ê',i:'î',o:'ô',u:'û',A:'Â',E:'Ê',I:'Î',O:'Ô',U:'Û'},
+    '~': {a:'ã',n:'ñ',o:'õ',A:'Ã',N:'Ñ',O:'Õ'},
+  };
+  return s
+    // Normalize the three BibTeX accent forms to the bare form:
+    // {\"u} → \"u  and  \"{u} → \"u   (then handled below)
+    .replace(/\{(\\["`'^~][a-zA-Z])\}/g, '$1')
+    .replace(/(\\["`'^~])\{([a-zA-Z])\}/g, '$1$2')
+    // Decode bare \"u, \'e, \`a, \^o, \~n
+    .replace(/\\(["`'^~])([a-zA-Z])/g, (_, acc, c) => (TBL[acc] && TBL[acc][c]) || c)
+    // German ß
+    .replace(/\\ss\{?\}?/g, 'ß')
+    // Common font / emphasis commands — keep content
+    .replace(/\\(?:textit|emph|textbf|textsc|texttt|textrm|textsf|mathrm|mathit)\s*\{([^}]*)\}/g, '$1')
+    // Escaped punctuation
+    .replace(/\\&/g, '&').replace(/\\\$/g, '$').replace(/\\%/g, '%')
+    .replace(/\\#/g, '#').replace(/\\_/g, '_').replace(/\\\\/g, ' ')
+    // Dashes and non-breaking space
+    .replace(/---/g, '—').replace(/--/g, '–').replace(/~/g, ' ')
+    // Strip surviving braces (case-protection braces in titles)
+    .replace(/\{([^{}]*)\}/g, '$1')
+    .replace(/\{([^{}]*)\}/g, '$1')
+    .replace(/\s+/g, ' ').trim();
+}
+
+// Minimal BibTeX parser — handles @type{key, field={value}, field="value", ...}
+// with nested braces, multi-line values, and the common entry types.
+function parseBibTeX(text) {
+  const entries = [];
+  // Strip line comments (% at start of line)
+  const s = text.replace(/^\s*%.*$/gm, '');
+  let i = 0;
+
+  while (i < s.length) {
+    while (i < s.length && s[i] !== '@') i++;
+    if (i >= s.length) break;
+    i++;
+
+    let t0 = i;
+    while (i < s.length && /[a-zA-Z]/.test(s[i])) i++;
+    const type = s.slice(t0, i).toLowerCase();
+
+    if (type === 'string' || type === 'comment' || type === 'preamble') {
+      // Skip these — fast-forward past the matching closing brace
+      while (i < s.length && s[i] !== '{' && s[i] !== '(') i++;
+      if (i >= s.length) break;
+      const open = s[i], close = open === '{' ? '}' : ')';
+      let depth = 1; i++;
+      while (i < s.length && depth > 0) {
+        if (s[i] === open) depth++;
+        else if (s[i] === close) depth--;
+        i++;
+      }
+      continue;
+    }
+
+    while (i < s.length && /\s/.test(s[i])) i++;
+    if (s[i] !== '{') continue;
+    i++;
+
+    let k0 = i;
+    while (i < s.length && s[i] !== ',' && s[i] !== '}') i++;
+    const key = s.slice(k0, i).trim();
+    if (s[i] !== ',') continue;
+    i++;
+
+    const fields = {};
+    while (i < s.length) {
+      while (i < s.length && /[\s,]/.test(s[i])) i++;
+      if (s[i] === '}') { i++; break; }
+      if (i >= s.length) break;
+
+      let n0 = i;
+      while (i < s.length && /[a-zA-Z0-9_-]/.test(s[i])) i++;
+      const name = s.slice(n0, i).toLowerCase();
+      if (!name) { i++; continue; }
+
+      while (i < s.length && /\s/.test(s[i])) i++;
+      if (s[i] !== '=') break;
+      i++;
+      while (i < s.length && /\s/.test(s[i])) i++;
+
+      let value = '';
+      if (s[i] === '{') {
+        let depth = 1; i++;
+        const v0 = i;
+        while (i < s.length && depth > 0) {
+          if (s[i] === '{') depth++;
+          else if (s[i] === '}') depth--;
+          if (depth > 0) i++;
+        }
+        value = s.slice(v0, i);
+        if (s[i] === '}') i++;
+      } else if (s[i] === '"') {
+        i++;
+        const v0 = i;
+        while (i < s.length && s[i] !== '"') {
+          if (s[i] === '\\') i++;
+          i++;
+        }
+        value = s.slice(v0, i);
+        if (s[i] === '"') i++;
+      } else {
+        const v0 = i;
+        while (i < s.length && s[i] !== ',' && s[i] !== '}') i++;
+        value = s.slice(v0, i).trim();
+      }
+
+      fields[name] = value;
+    }
+
+    entries.push({type, key, fields});
+  }
+  return entries;
+}
+
+function bibAuthorsToDisplay(authorStr) {
+  if (!authorStr) return '';
+  const authors = authorStr.split(/\s+and\s+/i).map(a => delatex(a.trim())).filter(Boolean);
+  if (authors.length === 0) return '';
+  if (authors.length === 1) return authors[0];
+  if (authors.length === 2) return `${authors[0]} and ${authors[1]}`;
+  return `${authors[0]} et al.`;
+}
+
+// Build a clean, human-readable line for the textarea from a BibTeX entry.
+// This is also what the text classifier would see if the user edits, so it's
+// shaped to give the heuristics good signals: "In ..." for chapters,
+// "Place: Publisher" for books, "Journal vol(issue): pages" for articles.
+function formatBibEntry(e) {
+  const f = e.fields;
+  const authors = bibAuthorsToDisplay(f.author || f.editor || '');
+  const year = (f.year || '').toString().match(/\d{4}/)?.[0] || '';
+  const title = delatex(f.title || '');
+  let out = '';
+  if (authors) out += authors;
+  if (year)    out += ` (${year}).`;
+  if (title)   out += ` ${title}.`;
+
+  const cat = bibCategoryOf(e);
+  if (cat === 'journal-article' && e.type === 'article') {
+    const journal = delatex(f.journal || f.journaltitle || '');
+    const vol = (f.volume || '').toString();
+    const iss = (f.number || f.issue || '').toString();
+    const pages = (f.pages || '').replace(/--/g, '–');
+    if (journal) out += ` ${journal}`;
+    if (vol)     out += ` ${vol}`;
+    if (iss)     out += `(${iss})`;
+    if (pages)   out += `: ${pages}`;
+    if (journal || vol || pages) out += '.';
+  } else if (cat === 'book') {
+    const addr = delatex(f.address || f.location || '');
+    const pub  = delatex(f.publisher || '');
+    if (addr && pub) out += ` ${addr}: ${pub}.`;
+    else if (pub)    out += ` ${pub}.`;
+  } else if (cat === 'book-chapter') {
+    const editor = bibAuthorsToDisplay(f.editor || '');
+    const book = delatex(f.booktitle || '');
+    const addr = delatex(f.address || f.location || '');
+    const pub  = delatex(f.publisher || '');
+    out += ` In`;
+    if (editor) out += ` ${editor} (ed.),`;
+    if (book)   out += ` ${book}.`;
+    if (addr && pub) out += ` ${addr}: ${pub}.`;
+    else if (pub)    out += ` ${pub}.`;
+  } else {
+    const note = delatex(f.howpublished || f.note || f.school || f.institution || '');
+    if (note) out += ` ${note}.`;
+  }
+  return out.trim().replace(/\s+/g, ' ');
+}
+
+// Direct DOI lookup — used when a BibTeX entry has a DOI field.
+async function fetchByDOI(doi) {
+  const clean = doi.replace(/^https?:\/\/(dx\.)?doi\.org\//i, '').replace(/^doi:\s*/i, '').trim();
+  const url = `https://api.crossref.org/works/${encodeURIComponent(clean)}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`DOI ${r.status}`);
+  const d = await r.json();
+  return d.message;
+}
+
+// Load a .bib file: parse, render to textarea, populate the line→entry map.
+function loadBibTeX(text) {
+  const entries = parseBibTeX(text);
+  bibLineMap = new Map();
+  const counts = {article:0, book:0, chapter:0, other:0};
+  const lines = [];
+  for (const e of entries) {
+    const line = formatBibEntry(e);
+    if (!line) continue;
+    bibLineMap.set(line, e);
+    lines.push(line);
+    const cat = bibCategoryOf(e);
+    if      (cat === 'journal-article') counts.article++;
+    else if (cat === 'book')            counts.book++;
+    else if (cat === 'book-chapter')    counts.chapter++;
+    else                                counts.other++;
+  }
+  document.getElementById('citationsArea').value = lines.join('\n');
+
+  const parts = [];
+  if (counts.article) parts.push(`${counts.article} article${counts.article === 1 ? '' : 's'}`);
+  if (counts.chapter) parts.push(`${counts.chapter} chapter${counts.chapter === 1 ? '' : 's'} / conference`);
+  if (counts.book)    parts.push(`${counts.book} book${counts.book === 1 ? '' : 's'}`);
+  if (counts.other)   parts.push(`${counts.other} other (theses/reports)`);
+  document.getElementById('bibSummary').textContent =
+    `${entries.length} entries · ${parts.join(', ')}. Books, chapters, and other non-articles will be marked NA.`;
+  document.getElementById('bibBanner').style.display = 'block';
+  updateCount();
+}
+
+
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({data:buf}).promise;
   const pages = [];
@@ -540,28 +834,42 @@ async function processOne(r) {
   r.status = 'fetching';
   render();
 
-  // Classify from the input string BEFORE touching CrossRef.
-  // For books and chapters, we skip the lookup entirely — CrossRef's match
-  // is unreliable (often returns reviews of the parent book), and the
-  // journal × year percentile framework doesn't apply.
-  r.detectedType = detectCitationType(r.query);
-  if (r.detectedType === 'book' || r.detectedType === 'book-chapter') {
+  // Classify: BibTeX entry type takes precedence over the text heuristic.
+  // For books, chapters, conference papers, theses, and reports: stop here.
+  if (r.bibEntry) {
+    r.detectedType = bibCategoryOf(r.bibEntry);
+    r.skipLabel = bibLabelOf(r.bibEntry);
+  } else {
+    r.detectedType = detectCitationType(r.query);
+  }
+  if (r.detectedType === 'book' || r.detectedType === 'book-chapter' || r.detectedType === 'other') {
     r.status = 'done';
     return;
   }
 
   try {
-    const {item, usedType, fallback} = await searchCrossRefWithFallback(r.query, r.detectedType);
+    let item;
+    const bibDOI = r.bibEntry?.fields?.doi;
+    if (bibDOI) {
+      // Direct DOI lookup — perfect match, no bibliographic search needed
+      item = await fetchByDOI(bibDOI);
+      r.usedType = item.type;
+      r.searchFallback = false;
+    } else {
+      const result = await searchCrossRefWithFallback(r.query, r.detectedType);
+      item = result.item;
+      r.usedType = result.usedType;
+      r.searchFallback = result.fallback;
+    }
+
     r.doi = item.DOI;
     r.matchedTitle = (item.title || [])[0] || '';
     r.matchedContainer = (item['container-title'] || [])[0] || '';
     r.itemType = item.type;
-    r.usedType = usedType;
-    r.searchFallback = fallback;
     r.citations = item['is-referenced-by-count'] ?? 0;
     const xrefYear = (item.published || item['published-print'] || item['published-online'])
                       ?.['date-parts']?.[0]?.[0];
-    r.year = xrefYear || guessYear(r.query);
+    r.year = xrefYear || r.year;
     const issn = (item.ISSN || [])[0];
 
     // Skip percentile fetch for too-recent articles
@@ -601,13 +909,18 @@ async function run() {
     return;
   }
   clearError();
-  results = citations.map((q, i) => ({
-    idx:i, query:q, year:guessYear(q), doi:null,
-    matchedTitle:null, matchedContainer:null,
-    detectedType:null, itemType:null, usedType:null, searchFallback:false,
-    citations:null, percentile:null, n:null, median:null,
-    tooRecent:false, status:'pending', error:null
-  }));
+  results = citations.map((q, i) => {
+    const bibEntry = bibLineMap.get(q) || null;
+    return {
+      idx:i, query:q, bibEntry,
+      year: bibEntry ? (parseInt((bibEntry.fields.year || '').match(/\d{4}/)?.[0]) || null) : guessYear(q),
+      doi:null, matchedTitle:null, matchedContainer:null,
+      detectedType:null, skipLabel:null,
+      itemType:null, usedType:null, searchFallback:false,
+      citations:null, percentile:null, n:null, median:null,
+      tooRecent:false, status:'pending', error:null
+    };
+  });
 
   document.getElementById('runBtn').disabled = true;
   document.getElementById('resultsTable').style.display = 'table';
@@ -632,12 +945,13 @@ function render() {
   tbody.innerHTML = '';
   results.forEach(r => {
     const tr = document.createElement('tr');
-    const isBookOrChapter = r.detectedType === 'book' || r.detectedType === 'book-chapter';
+    const isSkipped = r.detectedType === 'book' || r.detectedType === 'book-chapter' || r.detectedType === 'other';
 
-    // For books/chapters: show NA everywhere; skip the CrossRef-derived match line.
-    if (isBookOrChapter) {
-      const lbl = r.detectedType === 'book-chapter' ? 'book chapter' : 'book';
-      const note = `<div class="matched-title">→ Identified as ${lbl} — not scored</div>`;
+    // For books/chapters/other: show NA everywhere; skip the CrossRef-derived match line.
+    if (isSkipped) {
+      const lbl = r.skipLabel
+                  || (r.detectedType === 'book-chapter' ? 'book chapter' : 'book');
+      const note = `<div class="matched-title">→ Identified as ${escapeHTML(lbl)} — not scored</div>`;
       const NA = `<span class="badge na">NA</span>`;
       tr.innerHTML = `
         <td><div class="cite-cell">${escapeHTML(r.query)}${note}</div></td>
@@ -708,12 +1022,14 @@ function looselyMatches(query, title) {
 // ─── DOWNLOAD ─────────────────────────────────────────────────────────────
 function downloadXLSX() {
   const rows = results.map(r => {
-    const isBookOrChapter = r.detectedType === 'book' || r.detectedType === 'book-chapter';
-    if (isBookOrChapter) {
+    const isSkipped = r.detectedType === 'book' || r.detectedType === 'book-chapter' || r.detectedType === 'other';
+    if (isSkipped) {
+      const lbl = r.skipLabel
+                  || (r.detectedType === 'book-chapter' ? 'book chapter' : 'book');
       return {
         "Citation (input)":      r.query,
         "Year":                  "NA",
-        "Detected type":         r.detectedType === 'book-chapter' ? 'book chapter' : 'book',
+        "Detected type":         lbl,
         "Matched title":         "NA",
         "Matched container":     "NA",
         "DOI":                   "NA",
