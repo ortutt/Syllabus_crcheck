@@ -1,6 +1,6 @@
 # Citation Percentiles
 
-**Live tool:** [ortutt.github.io/citation-percentiles](https://ortutt.github.io/citation-percentiles/)
+**Live tool:** [ortutt.github.io/Syllabus_crcheck/](https://ortutt.github.io/Syllabus_crcheck/)
 
 Citation Percentiles is a web tool that takes a syllabus or reading list as input and returns the CrossRef citation percentile for every paper on it. Upload a PDF, Word, or text file; the tool extracts the citations, looks each one up against CrossRef, and ranks each paper against all articles in the same journal and year.
 
@@ -34,7 +34,7 @@ The CrossRef API is free and open. No API key is required. All processing happen
 
 ## How to Use
 
-1. Go to [ortutt.github.io/citation-percentiles](https://ortutt.github.io/citation-percentiles/)
+1. Go to [ortutt.github.io/Syllabus_crcheck/](https://ortutt.github.io/Syllabus_crcheck/)
 2. Upload a syllabus or reading list (`.pdf`, `.docx`, or `.txt`)
 3. Review the extracted citations and edit if needed (remove headers, fix line breaks, add missed papers)
 4. Click **Fetch percentiles**
@@ -58,7 +58,7 @@ Each row in the results table shows the matched CrossRef title underneath the in
 
 If you use Citation Percentiles in your research or reference it in academic work, please cite it as:
 
-> Tuttnauer, O. (2026). *Citation Percentiles* [Web application]. Retrieved from https://ortutt.github.io/citation-percentiles/
+> Tuttnauer, O. (2026). *Citation Percentiles* [Web application]. Retrieved from https://ortutt.github.io/Syllabus_crcheck/
 
 Or in BibTeX:
 
